@@ -4,7 +4,7 @@ import requests
 import random
 
 # --- 1. CẤU HÌNH GIAO DIỆN ---
-st.set_page_config(page_title="Nga Ngữ Expert v31.8", layout="centered", page_icon="🇷🇺")
+st.set_page_config(page_title="Nga Ngữ Expert v40", layout="centered", page_icon="🇷🇺")
 
 st.markdown("""
 <style>
@@ -22,7 +22,7 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# --- 2. HÀM AI (FIX GIỐNG & GIỮ ĐẶT CÂU) ---
+# --- 2. HÀM GỌI AI (FIX GIỐNG & ĐẶT CÂU TỰ NHIÊN) ---
 def call_ai_pro(word_ru, word_vn):
     api_key = st.secrets.get("GROQ_API_KEY")
     if not api_key: return "⚠️ Thiếu API Key trong Secrets."
@@ -32,18 +32,18 @@ def call_ai_pro(word_ru, word_vn):
     
     prompt = f"""
     Phân tích từ: '{word_ru}' ({word_vn}).
-    - XÁC ĐỊNH GIỐNG: Phải chuẩn. Đuôi -я, -ь (thường) là Giống cái. Đuôi -о, -е là Giống trung.
+    - XÁC ĐỊNH GIỐNG (GENDER): Kiểm tra kỹ đuôi. Ví dụ 'Песня' (-я) là Giống cái (Женский род).
     - DANH TỪ: Chia 6 cách số ít & số nhiều (Danh, Sinh, Tặng, Đối, Công cụ, Giới từ). Chuyển sang tính từ.
-    - ĐỘNG TỪ: Chia 6 ngôi hiện tại; Quá khứ; Mệnh lệnh thức.
-    - TÍNH TỪ: Chia 6 cách; Tính từ ngắn đuôi.
-    - ĐẶT CÂU: 3 ví dụ tự nhiên (Nga - Việt).
-    Lưu ý: Tô đậm đuôi biến đổi bằng **. Tên thành phần bằng tiếng Nga.
+    - ĐỘNG TỪ: Chia 6 ngôi hiện tại; Quá khứ (4 dạng); Mệnh lệnh thức (ты, вы).
+    - TÍNH TỪ: Chia 6 cách; Tính từ ngắn đuôi (Краткая форма).
+    - ĐẶT CÂU: Cung cấp 3 ví dụ đặt câu tự nhiên nhất (Nga - Việt).
+    Lưu ý: Tô đậm đuôi biến đổi bằng **.
     """
     
     payload = {
         "model": "llama-3.3-70b-versatile",
         "messages": [
-            {"role": "system", "content": "Giáo viên tiếng Nga. Xác định giống chính xác. Đặt câu giao tiếp tự nhiên."},
+            {"role": "system", "content": "Giáo viên tiếng Nga bản ngữ. Xác định giống chính xác 100%. Đặt câu tự nhiên, không máy móc quân sự."},
             {"role": "user", "content": prompt}
         ],
         "temperature": 0.1
@@ -53,33 +53,5 @@ def call_ai_pro(word_ru, word_vn):
         return r.json()['choices'][0]['message']['content']
     except: return "⚠️ AI đang bận."
 
-# --- 3. KHỞI TẠO SESSION STATE (KIỂM TRA TỪNG BIẾN) ---
-if 'pool' not in st.session_state: st.session_state.pool = []
-if 'idx' not in st.session_state: st.session_state.idx = 0
-if 'status' not in st.session_state: st.session_state.status = None
-if 'ai_res' not in st.session_state: st.session_state.ai_res = ""
-
-# --- 4. SIDEBAR ---
-with st.sidebar:
-    st.image("https://images.unsplash.com/photo-1513326738677-b964603b136d?q=80&w=400", caption="🇷🇺 Nước Nga")
-    st.header("📂 Nạp Dữ Liệu")
-    f = st.file_uploader("Nạp file .xlsx", type=["xlsx"], key="file_up")
-    
-    if f:
-        try:
-            df = pd.read_excel(f, engine='openpyxl')
-            df.columns = [str(c).strip().lower() for c in df.columns]
-            if st.button("BẮT ĐẦU HỌC 🚀"):
-                st.session_state.pool = df.to_dict('records')
-                random.shuffle(st.session_state.pool)
-                st.session_state.idx = 0
-                st.session_state.status = None
-                st.session_state.ai_res = ""
-                st.rerun()
-        except: st.error("Lỗi đọc file Excel!")
-    
-    st.markdown("---")
-    st.image("https://images.unsplash.com/photo-1504457047772-27fad17438e2?q=80&w=400", caption="🇻🇳 Việt Nam")
-
-# --- 5. GIAO DIỆN CHÍNH ---
-st.title("Russian Expert
+# --- 3. KHỞI TẠO SESSION STATE ---
+if 'pool' not in st.session
