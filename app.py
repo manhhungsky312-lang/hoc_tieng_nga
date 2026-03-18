@@ -2,98 +2,109 @@ import streamlit as st
 import pandas as pd
 import requests
 import json
+import random
 
-# --- 1. CẤU HÌNH ---
-st.set_page_config(page_title="Học Tiếng Nga Tự Nhiên", layout="wide")
+# --- 1. CẤU HÌNH HỆ THỐNG ---
+st.set_page_config(page_title="Học Tiếng Nga Thông Minh v10", layout="centered")
 api_key = st.secrets.get("GEMINI_API_KEY")
 
-def call_gemini_natural(word_ru, word_vn):
-    """Gọi Gemini phân tích ngữ pháp chuẩn và đặt câu tự nhiên"""
-    if not api_key: return "Chưa cấu hình API Key."
-    
+def call_gemini_analyze(word_ru, word_vn):
+    """Chỉ gọi AI khi người học trả lời ĐÚNG để phân tích sâu"""
+    if not api_key: return "Thiếu API Key."
     url = f"https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key={api_key}"
     
-    # PROMPT MỚI: ƯU TIÊN TÍNH TỰ NHIÊN VÀ CẤU TRÚC NGƯỜI NGA DÙNG
     prompt = f"""
-    Hãy phân tích từ tiếng Nga: '{word_ru}' (nghĩa: {word_vn}).
-    Yêu cầu trình bày chính xác bằng tiếng Việt:
-
-    ### 📝 NGỮ PHÁP CHI TIẾT
-    * **Loại từ & Giống:** (Nếu là danh từ, xác định Đực/Cái/Trung dựa trên đuôi -а/-я là Cái, phụ âm là Đực, -о/-е là Trung).
-    * **Biến cách (Cách 1):** Chia rõ dạng Số ít và Số nhiều.
-    * **Động từ (Nếu có):** Cặp khía cạnh và chia đủ 6 ngôi hiện tại (я, ты, он/она, мы, вы, они).
-
-    ### 💬 CÁCH DÙNG TỰ NHIÊN
-    * **Ví dụ 1:** Đặt một câu ngắn gọn, thông dụng mà người Nga hay dùng hàng ngày.
-    * **Ví dụ 2:** Đặt một câu có cấu trúc ngữ pháp phổ biến (sử dụng cách hoặc giới từ đi kèm).
-    *(Tất cả ví dụ phải có bản tiếng Nga và dịch nghĩa tiếng Việt sát nghĩa nhất).*
+    Phân tích từ tiếng Nga: '{word_ru}' (nghĩa: {word_vn}).
+    Yêu cầu:
+    1. Xác định Giống (Đực/Cái/Trung) dựa trên đuôi từ số ít, chia số ít/nhiều.
+    2. Nếu là động từ, chia 6 ngôi hiện tại.
+    3. Đặt 2 câu ví dụ cực kỳ tự nhiên, đời thường mà người Nga hay dùng (kèm dịch Việt).
+    Lưu ý: Trình bày rõ ràng, dễ hiểu.
     """
     
     payload = {"contents": [{"parts": [{"text": prompt}]}], "generationConfig": {"temperature": 0.2}}
-    
     try:
         response = requests.post(url, headers={'Content-Type': 'application/json'}, data=json.dumps(payload))
-        if response.status_code == 200:
-            return response.json()['candidates'][0]['content']['parts'][0]['text']
-        return f"Lỗi AI ({response.status_code})"
-    except: return "Lỗi kết nối máy chủ."
+        return response.json()['candidates'][0]['content']['parts'][0]['text']
+    except: return "AI đang bận, hãy xem đáp án và tiếp tục."
 
-# --- 2. QUẢN LÝ TRẠNG THÁI (NGĂN NHẢY CÂU) ---
-if 'vocab_list' not in st.session_state: st.session_state.vocab_list = None
+# --- 2. QUẢN LÝ BỘ NHỚ ---
+if 'pool' not in st.session_state: st.session_state.pool = [] # Danh sách câu hỏi hiện tại
 if 'idx' not in st.session_state: st.session_state.idx = 0
-if 'checked' not in st.session_state: st.session_state.checked = False
+if 'status' not in st.session_state: st.session_state.status = None # 'correct', 'wrong', None
 
+# --- 3. SIDEBAR: NẠP DỮ LIỆU ---
 with st.sidebar:
-    st.header("⚙️ Cài đặt")
-    uploaded_file = st.file_uploader("Nạp file Excel vựng", type=["xlsx"])
-    if uploaded_file:
-        df = pd.read_excel(uploaded_file)
+    st.header("📂 Dữ liệu học tập")
+    file = st.file_uploader("Nạp file Excel", type=["xlsx"])
+    if file:
+        df = pd.read_excel(file)
         df.columns = [str(c).strip().lower() for c in df.columns]
-        # Xáo trộn và khóa cố định
-        st.session_state.vocab_list = df.sample(frac=1).reset_index(drop=True)
-        st.session_state.idx = 0
-        st.session_state.checked = False
-        st.success("Đã nạp danh sách ngẫu nhiên!")
+        # Chuyển dataframe thành list các dictionary để dễ xáo trộn
+        if not st.session_state.pool:
+            st.session_state.pool = df.to_dict('records')
+            random.shuffle(st.session_state.pool)
+            st.session_state.idx = 0
+            st.success("Đã nạp dữ liệu thành công!")
 
-# --- 3. GIAO DIỆN HỌC ---
-st.title("🇷🇺 Luyện Tiếng Nga Bản Xứ")
+# --- 4. GIAO DIỆN CHÍNH ---
+st.title("🇷🇺 Russian Smart Learning")
 
-if st.session_state.vocab_list is not None:
-    data = st.session_state.vocab_list
-    c_ru = next((c for c in data.columns if any(k in c for k in ['nga', 'ru'])), None)
-    c_vn = next((c for c in data.columns if any(k in c for k in ['việt', 'vn', 'viet'])), None)
+if st.session_state.pool:
+    current_word = st.session_state.pool[st.session_state.idx]
+    
+    # Tìm cột Nga/Việt tự động
+    c_ru = next((k for k in current_word.keys() if 'nga' in k or 'ru' in k), None)
+    c_vn = next((k for k in current_word.keys() if 'việt' in k or 'vn' in k), None)
 
     if c_ru and c_vn:
-        row = data.iloc[st.session_state.idx]
-        word_ru = str(row[c_ru]).strip()
-        word_vn = str(row[c_vn]).strip()
+        word_ru = str(current_row := current_word[c_ru]).strip()
+        word_vn = str(current_word[c_vn]).strip()
 
-        st.info(f"Từ số: {st.session_state.idx + 1} / {len(data)}")
+        st.write(f"Câu hỏi còn lại trong danh sách: {len(st.session_state.pool)}")
         st.subheader(f"Dịch sang tiếng Nga: {word_vn}")
 
-        # KHÓA DỮ LIỆU BẰNG FORM THEO ID
-        with st.form(key=f"native_form_{st.session_state.idx}"):
-            user_input = st.text_input("Gõ đáp án:", value="")
-            submit_btn = st.form_submit_button("KIỂM TRA & GIẢI THÍCH ✅")
+        # KHÓA FORM THEO TỪ HIỆN TẠI (CHỐNG NHẢY CÂU)
+        with st.form(key=f"form_{word_ru}_{st.session_state.idx}"):
+            user_input = st.text_input("Đáp án của bạn:", value="", key=f"input_{st.session_state.idx}")
+            submit = st.form_submit_button("KIỂM TRA ✅")
 
-        if submit_btn:
-            st.session_state.checked = True
+        if submit:
             if user_input.strip().lower() == word_ru.lower():
-                st.success(f"Chính xác! Đáp án: {word_ru}")
+                st.session_state.status = 'correct'
+                st.success(f"⭐ CHÍNH XÁC! Đáp án: {word_ru}")
+                with st.spinner("AI đang phân tích ngữ pháp tự nhiên..."):
+                    st.markdown("---")
+                    st.markdown(call_gemini_analyze(word_ru, word_vn))
             else:
-                st.error(f"Sai rồi! Đáp án đúng: {word_ru}")
+                st.session_state.status = 'wrong'
+                st.error(f"❌ SAI RỒI! Đáp án đúng là: {word_ru}")
+                st.info("Từ này sẽ được lặp lại ngẫu nhiên ở các câu sau để bạn ghi nhớ.")
+                
+                # THUẬT TOÁN LẶP LẠI: Chèn từ sai vào một vị trí ngẫu nhiên phía sau
+                if len(st.session_state.pool) > 1:
+                    insert_pos = random.randint(st.session_state.idx + 1, len(st.session_state.pool))
+                    st.session_state.pool.insert(insert_pos, current_word)
+                else:
+                    st.session_state.pool.append(current_word)
 
-            with st.spinner("Gemini đang phân tích ngữ pháp tự nhiên..."):
-                analysis = call_gemini_natural(word_ru, word_vn)
-                st.markdown("---")
-                st.markdown(analysis)
-
-        if st.session_state.checked:
-            if st.button("Học từ tiếp theo ➡️"):
-                st.session_state.idx = (st.session_state.idx + 1) % len(data)
-                st.session_state.checked = False
+        # ĐIỀU HƯỚNG
+        if st.session_state.status is not None:
+            if st.button("Từ tiếp theo ➡️"):
+                # Xóa từ vừa làm xong (nếu muốn làm tiếp câu mới)
+                st.session_state.pool.pop(st.session_state.idx)
+                
+                # Nếu hết hàng thì quay về 0, nếu không thì giữ idx cũ (vì pop đã đôn từ dưới lên)
+                if not st.session_state.pool:
+                    st.warning("Chúc mừng! Bạn đã hoàn thành tất cả các từ.")
+                    st.balloons()
+                
+                if st.session_state.idx >= len(st.session_state.pool):
+                    st.session_state.idx = 0
+                
+                st.session_state.status = None
                 st.rerun()
     else:
-        st.error("File thiếu cột Tiếng Nga/Việt.")
+        st.error("File Excel không đúng định dạng cột Nga/Việt.")
 else:
-    st.write("Mời nạp file Excel ở thanh bên để bắt đầu bài học.")
+    st.info("Hãy nạp file Excel ở thanh bên để bắt đầu bài học.")
