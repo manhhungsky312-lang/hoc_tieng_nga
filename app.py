@@ -4,8 +4,8 @@ import requests
 import json
 import random
 
-# --- 1. CẤU HÌNH & GIAO DIỆN (CSS) ---
-st.set_page_config(page_title="Nga Ngữ Chuyên Sâu v24", layout="centered", page_icon="🇷🇺")
+# --- 1. CẤU HÌNH & GIAO DIỆN ---
+st.set_page_config(page_title="Nga Ngữ Expert v24.1", layout="centered", page_icon="🇷🇺")
 
 st.markdown("""
 <style>
@@ -20,46 +20,37 @@ st.markdown("""
         margin: 20px 0;
     }
     .ques-vn { color: #1e293b; font-size: 28px !important; font-weight: 800; }
-    /* Style cho bảng biến cách */
     table { width: 100%; border-collapse: collapse; margin-top: 10px; }
     th { background-color: #f1f5f9; color: #1e3a8a; font-weight: bold; text-align: center !important; }
     td { border: 1px solid #cbd5e1; padding: 10px; text-align: left; }
-    b { color: #e63946; } /* Tô màu đỏ cho phần đuôi được tô đậm */
+    b { color: #e63946; } 
 </style>
 """, unsafe_allow_html=True)
 
 api_key = st.secrets.get("GROQ_API_KEY")
 
 def call_groq_v24(word_ru, word_vn):
-    if not api_key: return "⚠️ Thiếu API Key."
+    if not api_key: return "⚠️ Lỗi: Chưa có API Key trong phần Secrets."
     
     url = "https://api.groq.com/openai/v1/chat/completions"
     headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
     
-    # PROMPT ÉP AI CHUẨN HÓA NGỮ PHÁP & TÔ ĐẬM ĐUÔI
     prompt = f"""
     Phân tích từ tiếng Nga: '{word_ru}' ({word_vn}).
     
-    YÊU CẦU NGHIÊM NGẶT:
-    1. XÁC ĐỊNH GIỐNG (Род): Kiểm tra kỹ đuôi từ. 
-       - Đuôi -а/-я là Женский род (Giống cái). KHÔNG nhầm sang Trung tính.
-       - Chỉ khẳng định giống đúng, KHÔNG liệt kê những gì không phải.
+    YÊU CẦU:
+    1. NGỮ PHÁP (ГРАММАТИКА): Chỉ nêu Giống (Род) và Loại biến cách (Склонение). KHÔNG phủ định rườm rà.
     2. BẢNG BIẾN CÁCH (Склонение): Lập bảng so sánh Ед. ч. và Мн. ч.
-       - Tên các cách dùng TIẾNG NGA 100%: Именительный, Родительный, Дательный, Винительный, Творительный, Предложный.
-       - TÔ ĐẬM phần đuôi biến đổi bằng cách dùng thẻ <b>...</b> hoặc **...**.
-    3. ĐỘNG TỪ (Глагол): Gợi ý 1 động từ hay đi kèm, chia 6 ngôi hiện tại (Я, Ты, Он/Она, Мы, Вы, Они).
-       - Chú ý đuôi động từ nhóm 2 (như смотреть -> смотришь).
-    4. VÍ DỤ: 
-       - Câu 1: Tính từ + Số ít.
-       - Câu 2: Giới từ + Số nhiều.
-       - Câu 3: Giao tiếp tự nhiên.
-    (Ví dụ có tiếng Nga và dịch Việt).
+       - Tên 6 cách dùng tiếng Nga: Именительный, Родительный, Дательный, Винительный, Творительный, Предложный.
+       - TÔ ĐẬM phần đuôi biến đổi bằng dấu ** (ví dụ: Песн**я**).
+    3. ĐỘNG TỪ (Глагол): Gợi ý 1 động từ đi kèm, chia 6 ngôi hiện tại.
+    4. VÍ DỤ: 3 câu (Tính từ, Giới từ, Giao tiếp). Có dịch Việt.
     """
     
     data = {
         "model": "llama-3.3-70b-versatile",
         "messages": [
-            {"role": "system", "content": "Bạn là chuyên gia ngôn ngữ Nga khắt khe. Trình bày khoa học, tập trung vào bảng biến cách chuẩn xác và tô đậm đuôi từ."},
+            {"role": "system", "content": "Bạn là chuyên gia ngôn ngữ Nga. Trình bày bảng Markdown chuẩn, súc tích, tô đậm đuôi từ."},
             {"role": "user", "content": prompt}
         ],
         "temperature": 0.1
@@ -68,7 +59,29 @@ def call_groq_v24(word_ru, word_vn):
     try:
         response = requests.post(url, headers=headers, json=data, timeout=15)
         return response.json()['choices'][0]['message']['content']
-    except: return "⚠️ AI bận. Hãy tiếp tục."
+    except Exception as e:
+        return f"⚠️ Lỗi kết nối AI: {str(e)}"
 
 # --- 2. QUẢN LÝ TRẠNG THÁI ---
-if 'pool' not in st.session_state: st.session_state.pool =
+if 'pool' not in st.session_state: st.session_state.pool = [] 
+if 'idx' not in st.session_state: st.session_state.idx = 0
+if 'status' not in st.session_state: st.session_state.status = None 
+if 'ai_response' not in st.session_state: st.session_state.ai_response = ""
+
+# --- 3. SIDEBAR ---
+with st.sidebar:
+    st.image("https://images.unsplash.com/photo-1513326738677-b964603b136d?q=80&w=400", caption="🇷🇺 Nước Nga")
+    uploaded_file = st.file_uploader("Nạp file Excel vựng", type=["xlsx"])
+    if uploaded_file and not st.session_state.pool:
+        df = pd.read_excel(uploaded_file)
+        df.columns = [str(c).strip().lower() for c in df.columns]
+        st.session_state.pool = df.to_dict('records')
+        random.shuffle(st.session_state.pool)
+        st.rerun() # Làm mới để nạp dữ liệu ngay
+    st.image("https://images.unsplash.com/photo-1504457047772-27fad17438e2?q=80&w=400", caption="🇻🇳 Việt Nam")
+
+# --- 4. GIAO DIỆN CHÍNH ---
+st.title("🇷🇺 Russian Expert v24.1 🇻🇳")
+
+if st.session_state.pool:
+    current_word = st.session_state.pool[st.session_state.idx]
