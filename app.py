@@ -1,37 +1,68 @@
-def call_gemini_analysis(word_ru, word_vn):
-    """Gọi trực tiếp Gemini API - Bản sửa lỗi 404 và v1beta"""
-    if not api_key: return "Thiếu API Key trong cấu hình Secrets."
-    
-    # Thử gọi bản v1 (ổn định nhất) thay vì v1beta
-    url = f"https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key={api_key}"
-    
-    headers = {'Content-Type': 'application/json'}
-    
-    prompt = f"""
-    Bạn là giảng viên tiếng Nga quân sự. Hãy phân tích từ: '{word_ru}' ({word_vn}).
-    Yêu cầu chính xác 100%:
-    1. LOẠI TỪ và GIỐNG (Nếu là danh từ: -а/-я là CÁI; phụ âm là ĐỰC; -о/-е là TRUNG).
-    2. BIẾN CÁCH: Chia số ít và số nhiều (Cách 1).
-    3. ĐỘNG TỪ: Chia đủ 6 ngôi hiện tại.
-    4. VÍ DỤ: 1 câu đời thường + 1 câu QUÂN SỰ thực tế (Nga - Việt).
-    """
-    
-    payload = {
-        "contents": [{"parts": [{"text": prompt}]}],
-        "generationConfig": {"temperature": 0.1}
-    }
-    
-    try:
-        response = requests.post(url, headers=headers, data=json.dumps(payload))
+import streamlit as st
+import pandas as pd
+import webbrowser
+
+# --- 1. CẤU HÌNH ---
+st.set_page_config(page_title="Học Tiếng Nga Siêu Tốc", layout="centered")
+
+# --- 2. KHÓA BỘ NHỚ (NGĂN NHẢY CÂU) ---
+if 'data' not in st.session_state: st.session_state.data = None
+if 'idx' not in st.session_state: st.session_state.idx = 0
+
+# --- 3. NẠP FILE ---
+with st.sidebar:
+    st.header("📂 Nạp từ vựng")
+    uploaded_file = st.file_uploader("Chọn file Excel", type=["xlsx"])
+    if uploaded_file:
+        df = pd.read_excel(uploaded_file)
+        df.columns = [str(c).strip().lower() for c in df.columns]
+        # Xáo trộn 1 lần duy nhất
+        st.session_state.data = df.sample(frac=1).reset_index(drop=True)
+        st.session_state.idx = 0
+        st.success("Đã nạp xong!")
+
+# --- 4. GIAO DIỆN CHÍNH ---
+st.title("🇷🇺 Luyện Nga Ngữ - Tra cứu Google")
+
+if st.session_state.data is not None:
+    data = st.session_state.data
+    c_ru = next((c for c in data.columns if any(k in c for k in ['nga', 'ru'])), None)
+    c_vn = next((c for c in data.columns if any(k in c for k in ['việt', 'vn', 'viet'])), None)
+
+    if c_ru and c_vn:
+        row = data.iloc[st.session_state.idx]
+        word_ru = str(row[c_ru]).strip()
+        word_vn = str(row[c_vn]).strip()
+
+        st.info(f"Từ số {st.session_state.idx + 1} / {len(data)}")
+        st.markdown(f"### Dịch sang tiếng Nga: **{word_vn}**")
+
+        # Ô nhập liệu - Khóa theo idx
+        user_input = st.text_input("Gõ từ tiếng Nga vào đây:", key=f"input_{st.session_state.idx}")
+
+        col1, col2, col3 = st.columns(3)
         
-        # Nếu v1 vẫn báo 404, thử lùi về v1beta (dành cho một số tài khoản mới)
-        if response.status_code == 404:
-            url_beta = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={api_key}"
-            response = requests.post(url_beta, headers=headers, data=json.dumps(payload))
-            
-        if response.status_code == 200:
-            return response.json()['candidates'][0]['content']['parts'][0]['text']
-        else:
-            return f"Lỗi Google ({response.status_code}): {response.text}"
-    except Exception as e:
-        return f"Lỗi kết nối: {str(e)}"
+        with col1:
+            if st.button("KIỂM TRA ✅"):
+                if user_input.strip().lower() == word_ru.lower():
+                    st.success(f"Chính xác! Đáp án: {word_ru}")
+                else:
+                    st.error(f"Sai rồi! Đáp án: {word_ru}")
+
+        with col2:
+            # TỰ ĐỘNG TẠO LINK TRA CỨU GOOGLE
+            # Bạn có thể đổi sang từ điển Wiktionary hoặc từ điển chuyên ngành khác
+            search_url = f"https://www.google.com/search?q={word_ru}+nghĩa+là+gì+ngữ+pháp"
+            st.link_button("TRA GOOGLE 🔍", search_url)
+
+        with col3:
+            if st.button("TỪ TIẾP THEO ➡️"):
+                if st.session_state.idx < len(data) - 1:
+                    st.session_state.idx += 1
+                    st.rerun()
+                else:
+                    st.warning("Đã hết danh sách!")
+    else:
+        st.error("File thiếu cột Tiếng Nga/Việt.")
+else:
+    st.write("Mời bạn nạp file Excel ở bên trái.")
