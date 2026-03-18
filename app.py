@@ -1,27 +1,24 @@
 import streamlit as st
 import pandas as pd
 import requests
-import random
 
-# --- 1. CẤU HÌNH ---
-st.set_page_config(page_title="Học Tiếng Nga Quân Sự v2", layout="wide")
+# --- 1. CẤU HÌNH GIAO DIỆN ---
+st.set_page_config(page_title="Học Tiếng Nga Quân Sự v3", layout="centered")
 
 api_key = st.secrets.get("GROQ_API_KEY")
 
 def call_ai_analysis(word_ru, word_vn):
     if not api_key: return "Chưa cấu hình API Key."
     
-    # PROMPT ÉP AI CHUẨN XÁC TUYỆT ĐỐI VỀ GIỐNG VÀ CÁCH CHIA
+    # PROMPT KHẮT KHE: ÉP AI KIỂM TRA QUY TẮC GIỐNG DANH TỪ
     prompt = f"""
-    Hãy phân tích từ tiếng Nga: '{word_ru}' (nghĩa: {word_vn}).
-    Yêu cầu trình bày theo cấu trúc học thuật:
-    1. Loại từ và Giống (Danh từ giống Đực/Cái/Trung). PHẢI XÁC ĐỊNH ĐÚNG ĐUÔI TỪ.
-    2. Nếu là Danh từ: Chia số ít và số nhiều (Cách 1).
-    3. Nếu là Động từ: Cho biết cặp khía cạnh (Hoàn thành/Chưa hoàn thành). Chia ở thời HIỆN TẠI (hoặc TƯƠNG LAI đơn) theo 6 ngôi: я, ты, он/она, мы, вы, они.
-    4. Đặt 2 câu ví dụ (Tiếng Nga có dịch tiếng Việt):
-       - 1 câu đời thường.
-       - 1 câu chuyên ngành QUÂN SỰ hoặc KỸ THUẬT (Sử dụng từ vựng chuyên môn thực tế).
-    Ghi chú: Trả lời bằng tiếng Việt, súc tích, chính xác.
+    Hãy phân tích từ tiếng Nga: '{word_ru}' (nghĩa tiếng Việt: {word_vn}).
+    Yêu cầu trình bày cực kỳ chính xác theo các bước sau:
+    1. Xác định LOẠI TỪ. 
+    2. Nếu là DANH TỪ: Phải xác định đúng GIỐNG (Đực/Cái/Trung) dựa trên đuôi từ. Ví dụ: -a/-я là Giống Cái; phụ âm/-й là Giống Đực; -о/-е là Giống Trung. Chia số ít và số nhiều (Cách 1).
+    3. Nếu là ĐỘNG TỪ: Xác định cặp khía cạnh. Chia động từ thời hiện tại cho tất cả các ngôi (я, ты, он/она, мы, вы, они).
+    4. Ví dụ: Đặt 1 câu đời thường và 1 câu chuyên ngành QUÂN SỰ (Tiếng Nga có dịch tiếng Việt).
+    Lưu ý: Không được nhầm lẫn giống của danh từ. Trình bày bằng tiếng Việt rõ ràng.
     """
     
     url = "https://api.groq.com/openai/v1/chat/completions"
@@ -29,36 +26,37 @@ def call_ai_analysis(word_ru, word_vn):
     payload = {
         "model": "llama-3.3-70b-versatile",
         "messages": [
-            {"role": "system", "content": "Bạn là giáo sư tiếng Nga tại học viện quân sự. Trả lời cực kỳ chính xác về ngữ pháp, không nhầm lẫn giống của danh từ."},
+            {"role": "system", "content": "Bạn là giáo sư ngôn ngữ Nga tại Học viện Kỹ thuật Quân sự. Trả lời chính xác, học thuật, không sai kiến thức căn bản."},
             {"role": "user", "content": prompt}
         ],
-        "temperature": 0.0 # Ép AI trả lời máy móc theo quy tắc, không sáng tạo linh tinh
+        "temperature": 0 # Mức chính xác tuyệt đối, không sáng tạo lung tung
     }
     try:
         response = requests.post(url, headers=headers, json=payload)
         return response.json()['choices'][0]['message']['content']
-    except: return "Lỗi hệ thống AI."
+    except: return "Lỗi kết nối AI. Vui lòng thử lại."
 
-# --- 2. QUẢN LÝ TRẠNG THÁI ---
+# --- 2. KHÓA TRẠNG THÁI (NGĂN NHẢY CÂU) ---
 if 'data' not in st.session_state: st.session_state.data = None
 if 'idx' not in st.session_state: st.session_state.idx = 0
-if 'submitted' not in st.session_state: st.session_state.submitted = False
+if 'show_analysis' not in st.session_state: st.session_state.show_analysis = False
+if 'user_ans' not in st.session_state: st.session_state.user_ans = ""
 
 # --- 3. SIDEBAR ---
 with st.sidebar:
-    st.header("⚙️ Dữ liệu")
+    st.header("Cài đặt")
     uploaded_file = st.file_uploader("Nạp file Excel", type=["xlsx"])
     if uploaded_file:
         df = pd.read_excel(uploaded_file)
         df.columns = [str(c).strip().lower() for c in df.columns]
-        # Xáo trộn 1 lần duy nhất
+        # Xáo trộn ngẫu nhiên một lần duy nhất khi nạp file
         st.session_state.data = df.sample(frac=1).reset_index(drop=True)
         st.session_state.idx = 0
-        st.session_state.submitted = False
+        st.session_state.show_analysis = False
         st.success("Đã nạp và xáo trộn từ vựng!")
 
 # --- 4. GIAO DIỆN CHÍNH ---
-st.title("🇷🇺 Russian Military Training Center")
+st.title("🇷🇺 Russian Deep Learning")
 
 if st.session_state.data is not None:
     df = st.session_state.data
@@ -70,37 +68,37 @@ if st.session_state.data is not None:
         word_ru = str(row[col_ru]).strip()
         word_vn = str(row[col_vn]).strip()
 
-        st.info(f"Từ số: {st.session_state.idx + 1} / {len(df)}")
-        st.markdown(f"### Dịch sang tiếng Nga: <span style='color:blue'>{word_vn}</span>", unsafe_allow_html=True)
+        st.write(f"**Câu hỏi {st.session_state.idx + 1} / {len(df)}**")
+        st.markdown(f"### Dịch sang tiếng Nga: <span style='color:#d32f2f'>{word_vn}</span>", unsafe_allow_html=True)
 
-        # Form nhập liệu
-        with st.form(key=f"form_{st.session_state.idx}"):
-            user_input = st.text_input("Nhập đáp án tiếng Nga:", value="")
-            btn_check = st.form_submit_button("Kiểm tra ✅")
+        # Nhập liệu không dùng Form để xử lý mượt hơn nhưng có khóa trạng thái
+        user_input = st.text_input("Nhập đáp án:", key=f"input_{st.session_state.idx}")
 
-        if btn_check:
-            st.session_state.submitted = True
-            if user_input.strip().lower() == word_ru.lower():
-                st.success(f"⭐ CHÍNH XÁC! Đáp án: **{word_ru}**")
-            else:
-                st.error(f"❌ SAI RỒI! Đáp án đúng là: **{word_ru}**")
-                st.warning(f"Gợi ý: Hãy chú ý đuôi từ để xác định giống của '{word_ru}'.")
+        col_a, col_b = st.columns(2)
+        with col_a:
+            if st.button("Kiểm tra ✅"):
+                if user_input.strip().lower() == word_ru.lower():
+                    st.success(f"Chính xác! Đáp án là: {word_ru}")
+                else:
+                    st.error(f"Sai rồi. Đáp án đúng phải là: {word_ru}")
+                st.session_state.show_analysis = True
 
-            with st.spinner("🤖 AI đang phân tích ngữ pháp quân sự..."):
-                analysis = call_ai_analysis(word_ru, word_vn)
-                st.markdown("---")
-                st.markdown(analysis)
-
-        # Nút nhảy câu chỉ xuất hiện sau khi đã trả lời
-        if st.session_state.submitted:
+        with col_b:
             if st.button("Từ tiếp theo ➡️"):
                 if st.session_state.idx < len(df) - 1:
                     st.session_state.idx += 1
                 else:
                     st.session_state.idx = 0
-                st.session_state.submitted = False
+                st.session_state.show_analysis = False
                 st.rerun()
+
+        # Chỉ hiển thị phân tích khi người dùng đã bấm Kiểm tra
+        if st.session_state.show_analysis:
+            with st.spinner("AI đang phân tích ngữ pháp chi tiết..."):
+                result = call_ai_analysis(word_ru, word_vn)
+                st.markdown("---")
+                st.markdown(result)
     else:
-        st.error("File Excel thiếu cột Tiếng Nga hoặc Tiếng Việt.")
+        st.error("File Excel thiếu cột Tiếng Nga/Việt.")
 else:
-    st.write("Mời bạn nạp file Excel ở Menu bên trái để bắt đầu huấn luyện.")
+    st.info("Mời bạn nạp file Excel ở thanh bên trái.")
